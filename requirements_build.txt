@@ -6,5 +6,5 @@ keras
 numpy
 xgboost
 neptune-client
-neptune-contrib[monitoring]
+#neptune-contrib[monitoring]
 pandas

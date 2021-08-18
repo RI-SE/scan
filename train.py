@@ -40,7 +40,10 @@ import shutil
 from joblib import dump, load
 from common import log_verbose
 import common
-
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
+from numpy import mean
+from numpy import std
 
 #start time measurement
 start_time = datetime.now()
@@ -67,8 +70,13 @@ algorithm_switches = [
 ]
 
 parser = argparse.ArgumentParser(description='Demo for various training shape recognition methods')
+parser.add_argument('--gpu',  action='store_true', default=False,
+                    dest='gpu',
+                    help='Use GPU acceleration')
 parser.add_argument('--pca', '-p', action='store', dest='pca',
                     help='Perform PCA on input data. Values below 1 for explained variability, from 1 number of PCA components')
+parser.add_argument('--kfold', '-k', action='store', dest='kfold',
+                    help='Perform kfold cross validation. Specify number of folds')
 parser.add_argument('--extended', action='store_true', default=False, dest='extended',
                     help='Produces predictions for the complete data set')
 parser.add_argument('--verbose', '-v', action='store_true', default=False,
@@ -183,8 +191,7 @@ if results.pca:
     # apply the PCA transform
     X_train = pca.transform(X_train)
     X_test = pca.transform(X_test)
-    if results.extended:
-        all_X = pca.transform(all_X)
+    all_X = pca.transform(all_X)
 
 
 # Random forest
@@ -232,7 +239,10 @@ if results.all_classifier or results.limited_classifier or results.default_class
     classifiers.append(('RandomForestClassifier', RandomForestClassifier(**parameters)))
 
 if results.all_classifier or results.limited_classifier or results.default_classifier or results.xgb_classifier:
-    classifiers.append(('XGBClassifier', XGBClassifier(use_label_encoder=False, eval_metric = "merror")))
+    if results.gpu:
+        classifiers.append(('XGBClassifier', XGBClassifier(use_label_encoder=False, eval_metric = "merror", tree_method='gpu_hist', gpu_id=0)))
+    else:
+        classifiers.append(('XGBClassifier', XGBClassifier(use_label_encoder=False, eval_metric="merror")))
 
 #limited classifiers
 
@@ -249,10 +259,12 @@ if results.all_classifier or results.limited_classifier or results.nn_classifier
                                           verbose=0)
     classifiers.append(('NeuralNet', keras_estimator))
 
-
 #full classifiers
 if results.all_classifier or results.xrfc_classifier:
-    classifiers.append(('XGBRFClassifier', XGBRFClassifier(use_label_encoder=False, eval_metric = "merror", n_estimators=220)))
+    if results.gpu:
+        classifiers.append(('XGBRFClassifier', XGBRFClassifier(use_label_encoder=False, eval_metric = "merror", n_estimators=220, tree_method='gpu_hist', gpu_id=0)))
+    else:
+        classifiers.append(('XGBRFClassifier', XGBRFClassifier(use_label_encoder=False, eval_metric="merror", n_estimators=220)))
 
 if results.all_classifier or results.mlp_classifier:
     classifiers.append(('MLPClassifier', MLPClassifier(alpha=1, max_iter=5000)))
@@ -285,12 +297,17 @@ for name, clf in classifiers:
 one_hot_encoded = ['NeuralNet']
 
 accuracy = {}
+kfold_accuracy = {}
+kfold_std = {}
 class_probability_names = []
 for class_name in encoder.classes_:
     class_probability_names.append(class_name + '_prob')
 
 for name, clf in classifiers:
-    log_verbose("\nEvaluating: ", name)
+    if name in {'Stacked'}:
+        log_verbose("\nEvaluating: ", name)
+    else:
+        continue
     train_start_time = datetime.now()
     fig, ax = plt.subplots()
     if name in one_hot_encoded:
@@ -305,10 +322,25 @@ for name, clf in classifiers:
         plt.close(fig)
         #clf.save(output_file(name + ".joblib")) does not work not NN
     else:
-        cm = ConfusionMatrix(clf, encoder=encoder, is_fitted=False, ax=ax)
+        #perform k-fold if requested, number of splits provided as input
+        if results.kfold:
+            log_verbose(' Performing ' + results.kfold + '-fold cross validation for: ' + name )
+            folds=int(results.kfold)
+            # prepare the cross-validation procedure
+            cv = KFold(n_splits=folds, random_state=1, shuffle=True)
+            # evaluate model
+            scores = cross_val_score(clf, all_X, ordinal_y, scoring='accuracy', cv=cv, n_jobs=-1)
+            # report performance
+            print(scores)
+            kfold_accuracy[name] = mean(scores)
+            kfold_std[name] = std(scores)
+            print('Accuracy: %.3f (%.3f)' % (mean(scores), std(scores)))
+
+        cm = ConfusionMatrix(clf, label_encoder=encoder, classes=encoder.classes_)#, is_fitted=False, ax=ax)
         cm.fit(X_train, ordinal_y_train)
         accuracy[name] = cm.score(X_test, ordinal_y_test)
         cm.finalize()
+        plt.tight_layout()
         plt.savefig(common.model_file(name + ".png"))
         plt.close(fig)
         dump(clf, common.model_file(name + ".joblib"))
@@ -362,6 +394,9 @@ if results.upload:
     for name, clf in classifiers:
         log_verbose('Uploading data for: ', name)
         neptune.log_metric(name, accuracy[name])
+        if results.kfold:
+            neptune.log_metric('kfold_accuracy_'+name, kfold_accuracy[name])
+            neptune.log_metric('kfold_stddev_'+name, kfold_std[name])
         # Load image
         image = Image.open(common.model_file(name+".png"))
         neptune.log_image('Confusion matrices', image, image_name=name, description='Confusion matrix for '+name)
