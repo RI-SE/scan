@@ -25,8 +25,7 @@ import os
 from keras.models import Sequential
 from keras.layers import Dense
 from sklearn.preprocessing import LabelEncoder
-from keras.utils import np_utils
-from keras.wrappers.scikit_learn import KerasClassifier
+from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 import argparse
 from datetime import datetime
 from xgboost import XGBClassifier
@@ -44,6 +43,7 @@ from sklearn.model_selection import KFold
 from sklearn.model_selection import cross_val_score
 from numpy import mean
 from numpy import std
+from tensorflow.keras.utils import to_categorical
 
 #start time measurement
 start_time = datetime.now()
@@ -159,7 +159,7 @@ encoder.fit(all_y.values.ravel())
 # get ordinal encoding
 ordinal_y = encoder.transform(all_y.values.ravel())
 # get one hot encoding
-one_hot_y = np_utils.to_categorical(ordinal_y)
+one_hot_y = to_categorical(ordinal_y)
 
 #save classes to the file
 common.save_encoder(encoder)

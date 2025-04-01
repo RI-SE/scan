@@ -1,10 +1,13 @@
 # This file may be used to create an environment using:
 # $ conda create --name <env> --file <this file>
-scikit-learn
-tensorflow
-keras
-numpy
-xgboost
-streamlit
-pandas
-xlsxwriter
+scikit-learn=1.6.1
+tensorflow=2.12.0
+keras=2.12.0
+numpy=1.23.5
+xgboost=2.1.1
+streamlit=1.43.2
+pandas=2.2.3
+lsxwriter=3.1.1
+matplotlib=3.10.0
+yellowbrick=1.5
+seaborn=0.13.2
