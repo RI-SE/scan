@@ -304,7 +304,7 @@ for class_name in encoder.classes_:
     class_probability_names.append(class_name + '_prob')
 
 for name, clf in classifiers:
-    if name in {'Stacked'}:
+    if name not in {'Stacked'}:
         log_verbose("\nEvaluating: ", name)
     else:
         continue
@@ -335,7 +335,6 @@ for name, clf in classifiers:
             kfold_accuracy[name] = mean(scores)
             kfold_std[name] = std(scores)
             print('Accuracy: %.3f (%.3f)' % (mean(scores), std(scores)))
-
         cm = ConfusionMatrix(clf, label_encoder=encoder, classes=encoder.classes_)#, is_fitted=False, ax=ax)
         cm.fit(X_train, ordinal_y_train)
         accuracy[name] = cm.score(X_test, ordinal_y_test)
