@@ -5,3 +5,4 @@ keras
 numpy
 xgboost
 pandas
+xlsxwriter
